@@ -188,7 +188,7 @@ input[type=checkbox]{width:auto;padding:0;accent-color:var(--purple);}
 <div id="player" style="display:none;position:fixed;bottom:var(--nav-h);left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:#09090f;border-top:1px solid var(--border);padding:.6rem 1.25rem;z-index:39;align-items:center;gap:.85rem;box-shadow:0 -4px 20px #00000060;"></div>
 
 <!-- USER MENU -->
-<div id="userMenu" style="display:none;position:fixed;top:4.5rem;right:1rem;background:#0d0d1c;border:1px solid var(--border2);border-radius:14px;padding:.85rem;z-index:300;min-width:190px;box-shadow:0 8px 32px #00000060;">
+<div id="userMenu" style="display:none;position:fixed;top:4.5rem;right:1rem;background:#0d0d1c;border:1px solid var(--border2);border-radius:14px;padding:.85rem;z-index:9999;min-width:190px;box-shadow:0 8px 32px #00000060;">
   <div id="userName" style="font-size:.72rem;color:var(--text);font-weight:600;margin-bottom:.2rem;"></div>
   <div id="userEmail" style="font-size:.58rem;color:var(--text3);margin-bottom:.65rem;border-bottom:1px solid var(--border);padding-bottom:.6rem;"></div>
   <div id="userRoleLabel" style="font-size:.58rem;color:var(--purple);margin-bottom:.65rem;text-transform:uppercase;letter-spacing:.07em;"></div>
@@ -456,29 +456,11 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const ADMIN_EMAIL = 'pandonacho906@gmail.com';
 
 // ── DATA ──────────────────────────────────────────────────────────────────────
-const DJS_DEMO=[
-  {id:'d1',name:'NOVA',genre:'Tech House',city:'Buenos Aires',bio:'Residente en Club Niceto desde 2019.',ig:'@djnova_ba',color:'#a855f7',bg:'#1a0830',price:15000,avail:true,rating:4.8,hires:47,
-   sets:[{name:'Purple Haze EP 3',bpm:126,dur:3720,genre:'Tech House',blob:null},{name:'Midnight Rotation Vol.2',bpm:124,dur:4140,genre:'Deep House',blob:null}]},
-  {id:'d2',name:'KREUZ',genre:'Techno',city:'Buenos Aires',bio:'DJ y productor de techno industrial.',ig:'@kreuz_dj',color:'#22d3ee',bg:'#051518',price:20000,avail:true,rating:4.9,hires:82,
-   sets:[{name:'Machine Room 01',bpm:140,dur:5400,genre:'Techno',blob:null},{name:'Bunker Sessions',bpm:138,dur:4800,genre:'Industrial Techno',blob:null}]},
-  {id:'d3',name:'SABLE',genre:'Drum & Bass',city:'Rosario',bio:'Referente del D&B en Rosario.',ig:'@sable_dnb',color:'#facc15',bg:'#141200',price:12000,avail:false,rating:4.7,hires:31,
-   sets:[{name:'Jungle Warfare #9',bpm:174,dur:3900,genre:'Jungle',blob:null}]},
-  {id:'d4',name:'AURA',genre:'Ambient',city:'Cordoba',bio:'Paisajes sonoros para eventos especiales.',ig:'@aura_sound',color:'#34d399',bg:'#051208',price:10000,avail:true,rating:4.6,hires:19,
-   sets:[{name:'Ether Waves III',bpm:90,dur:5100,genre:'Ambient',blob:null}]},
-  {id:'d5',name:'FRAK',genre:'UK Bass',city:'Buenos Aires',bio:'Bass music y breaks.',ig:'@frak_bass',color:'#f87171',bg:'#140505',price:13000,avail:true,rating:4.5,hires:28,
-   sets:[{name:'South London Sessions',bpm:145,dur:3600,genre:'UK Bass',blob:null}]},
-];
+const DJS_DEMO=[];
 let _deletedDemos = JSON.parse(localStorage.getItem('nuit_deleted_demos')||'[]');
 let DJS = DJS_DEMO.filter(d=>!_deletedDemos.includes(d.id));
 
-const EVENTS_ALL=[
-  {id:'ev1',title:'UNDERGROUND RAVE',venue:'Club Niceto',city:'Buenos Aires',addr:'Niceto Vega 5510, Palermo, CABA',date:'2026-05-25',time:'23:00',lineup:['d1','d5'],price:5000,genre:'House / Bass'},
-  {id:'ev2',title:'BUNKER NIGHT',venue:'La Maldita',city:'Buenos Aires',addr:'Av. Rivadavia 3000, CABA',date:'2026-05-30',time:'00:00',lineup:['d2'],price:6000,genre:'Techno'},
-  {id:'ev3',title:'JUNGLE FEVER',venue:'La Trinchera',city:'Rosario',addr:'San Lorenzo 1234, Rosario',date:'2026-06-06',time:'22:00',lineup:['d3'],price:3000,genre:'Drum & Bass'},
-  {id:'ev4',title:'MACHINE ROOM',venue:'El Teatro Club',city:'Buenos Aires',addr:'Constitucion 3456, CABA',date:'2026-06-14',time:'00:00',lineup:['d2'],price:8000,genre:'Techno Industrial'},
-  {id:'ev5',title:'SOUND HEALING',venue:'Casa Cultural',city:'Cordoba',addr:'Bv. San Juan 500, Cordoba',date:'2026-06-20',time:'20:00',lineup:['d4'],price:2500,genre:'Ambient'},
-  {id:'ev6',title:'MASSIVE NIGHT',venue:'Estadio Obras',city:'Buenos Aires',addr:'Av. del Libertador 7395, CABA',date:'2026-07-04',time:'20:00',lineup:['d1','d2','d5'],price:12000,genre:'Multi-Genero'},
-]
+const EVENTS_ALL=[]
 let EVENTS = EVENTS_ALL.filter(e=>!JSON.parse(localStorage.getItem('nuit_deleted_events')||'[]').includes(e.id));;
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
@@ -1124,8 +1106,9 @@ function renderProfile(){
   }
   const p = currentUser._profile || {};
   const isCEO = currentUser.email === 'pandonacho906@gmail.com';
-  const roleLabels={dj:'DJ',fan:'Fan / Oyente',organizador:'Organizador de eventos',ceo:'CEO · NUIT'};
+  const roleLabels={dj:'DJ',fan:'Fan / Oyente',organizador:'Organizador de eventos',ceo:'CEO · NUIT',soporte:'Soporte Oficial NUIT'};
   if(isCEO && p.role !== 'ceo') p.role = 'ceo';
+  if(currentUser.id === 'cc288ad7-7cb9-4e87-95d9-9f58442223b5') p.role = 'soporte';
   const roleColors={dj:'#a855f7',fan:'#22d3ee',organizador:'#34d399',soporte:'#34d399',ceo:'#facc15'};
   const color=roleColors[p.role||'fan']||'#a855f7';
   const fullName=((p.nombre||'')+(p.apellido?' '+p.apellido:'')).trim()||currentUser.email;
@@ -1517,7 +1500,9 @@ function toggleUserMenu(){
     const roleLabels={dj:'DJ',fan:'Fan',organizador:'Organizador',soporte:'Soporte'};
   const isSupportAccount = userId === 'cc288ad7-7cb9-4e87-95d9-9f58442223b5';
   if(isSupportAccount) profile.role = 'soporte';
-    document.getElementById('userRoleLabel').textContent=roleLabels[p.role||'fan']||'Fan';
+    const _roleLabels={dj:'DJ',fan:'Fan',organizador:'Organizador',ceo:'CEO · NUIT',soporte:'Soporte Oficial NUIT'};
+        const _role = currentUser.id==='cc288ad7-7cb9-4e87-95d9-9f58442223b5'?'soporte':(p.role||'fan');
+        document.getElementById('userRoleLabel').textContent=_roleLabels[_role]||'Fan';
     const djPanelBtn=document.getElementById('djPanelBtn');
     if(djPanelBtn) djPanelBtn.style.display=(p.role==='dj'||p.role==='organizador')?'block':'none';
   } else menu.style.display='none';
