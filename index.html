@@ -1946,8 +1946,27 @@ async function openDM(profile){
   if(dmSubscription) dmSubscription.unsubscribe();
   dmSubscription = sb.channel('dm:'+roomId)
     .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:`room_id=eq.${roomId}`},
-      (payload)=>{ renderDMMessages(null, roomId, payload.new); }
-    ).subscribe();
+      (payload)=>{ 
+        if(payload.new && payload.new.room_id === roomId){
+          renderDMMessages(null, roomId, payload.new); 
+        }
+      }
+    ).subscribe((status)=>{
+      console.log('DM subscription status:', status);
+    });
+  
+  // Poll every 3 seconds as fallback for realtime
+  if(window._dmPollInterval) clearInterval(window._dmPollInterval);
+  window._dmPollInterval = setInterval(async()=>{
+    if(!dmUser || document.getElementById('dmModal')?.style.display === 'none'){
+      clearInterval(window._dmPollInterval);
+      return;
+    }
+    const {data:newMsgs} = await sb.from('messages').select('*').eq('room_id',roomId).order('created_at',{ascending:true}).limit(50);
+    if(newMsgs && newMsgs.length !== dmAllMessages.length){
+      renderDMMessages(newMsgs, roomId);
+    }
+  }, 3000);
 }
 
 let dmAllMessages = [];
@@ -1990,6 +2009,7 @@ async function sendDM(){
 
 function closeDM(){
   if(dmSubscription){ dmSubscription.unsubscribe(); dmSubscription=null; }
+  if(window._dmPollInterval){ clearInterval(window._dmPollInterval); window._dmPollInterval=null; }
   dmAllMessages=[];
   dmUser=null;
   document.getElementById('dmModal').style.display='none';
@@ -2026,8 +2046,9 @@ async function showAdminPanel(){
     </div>
     <div style="display:flex;gap:.35rem;margin-bottom:1rem;overflow-x:auto;padding-bottom:.25rem;">
       <button class="pill ap" onclick="loadAdminTab('users')" id="atab-users">Usuarios</button>
-      <button class="pill" onclick="loadAdminTab('posts')" id="atab-posts">Publicaciones</button>
-      <button class="pill" onclick="loadAdminTab('profiles')" id="atab-profiles">Perfiles DJ</button>
+      <button class="pill" onclick="loadAdminTab('posts')" id="atab-posts">Posts</button>
+      <button class="pill" onclick="loadAdminTab('profiles')" id="atab-profiles">DJs</button>
+      <button class="pill" onclick="loadAdminTab('soporte')" id="atab-soporte">Soporte</button>
     </div>
     <div id="adminContent"></div>
   </div>`;
@@ -2037,7 +2058,7 @@ async function showAdminPanel(){
 
 async function loadAdminTab(tab){
   adminTab = tab;
-  ['users','posts','profiles'].forEach(t=>{
+  ['users','posts','profiles','soporte'].forEach(t=>{
     const btn = document.getElementById('atab-'+t);
     if(btn) btn.className = t===tab?'pill ap':'pill';
   });
@@ -2097,6 +2118,56 @@ async function loadAdminTab(tab){
       </div>`;
     });
     el.innerHTML = h||'<div style="font-size:.65rem;color:var(--text3);text-align:center;padding:1rem;">Sin perfiles DJ</div>';
+  } else if(tab==='soporte'){
+    // Load all DM conversations with support account
+    const {data:msgs} = await sb.from('messages')
+      .select('room_id, user_id, user_name, content, created_at')
+      .or(`room_id.like.%${SUPPORT_USER_ID}%`)
+      .order('created_at',{ascending:false});
+    
+    if(!msgs||msgs.length===0){
+      el.innerHTML='<div style="font-size:.65rem;color:var(--text3);text-align:center;padding:2rem;">No hay chats de soporte todavia</div>';
+      return;
+    }
+    
+    // Group by room_id to get unique conversations
+    const rooms = {};
+    msgs.forEach(m=>{
+      if(!rooms[m.room_id]){
+        rooms[m.room_id] = {
+          room_id: m.room_id,
+          last_msg: m.content,
+          last_time: m.created_at,
+          user_name: m.user_id !== SUPPORT_USER_ID ? m.user_name : null,
+          user_id: m.user_id !== SUPPORT_USER_ID ? m.user_id : null,
+          msgs: []
+        };
+      }
+      rooms[m.room_id].msgs.push(m);
+      // Get the non-support user info
+      if(m.user_id !== SUPPORT_USER_ID && !rooms[m.room_id].user_id){
+        rooms[m.room_id].user_id = m.user_id;
+        rooms[m.room_id].user_name = m.user_name;
+      }
+    });
+    
+    let h = `<div style="font-size:.58rem;color:var(--text3);margin-bottom:.75rem;">${Object.keys(rooms).length} conversaciones activas</div>`;
+    
+    Object.values(rooms).forEach(room=>{
+      const time = new Date(room.last_time).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+      h+=`<div class="card card-click" onclick="adminOpenSupportChat('${room.user_id}')" style="padding:.85rem;margin-bottom:.45rem;">
+        <div style="display:flex;align-items:center;gap:.75rem;">
+          <div class="avi" style="width:38px;height:38px;background:#34d39920;color:#34d399;font-size:.85rem;">${(room.user_name||'?')[0].toUpperCase()}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:.75rem;font-weight:600;">${room.user_name||'Usuario'}</div>
+            <div style="font-size:.6rem;color:var(--text3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${room.last_msg||''}</div>
+          </div>
+          <div style="font-size:.52rem;color:var(--text3);white-space:nowrap;">${time}</div>
+        </div>
+      </div>`;
+    });
+    
+    el.innerHTML = h;
   }
 }
 
@@ -2514,36 +2585,8 @@ async function showNuitNight(){
 // ── SOPORTE ───────────────────────────────────────────────────────────────────
 function showSupport(){
   document.getElementById('userMenuOverlay')?.remove();
-  const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:600;display:flex;align-items:flex-end;';
-  overlay.innerHTML = `
-    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:20px 20px 0 0;padding:1.5rem;width:100%;max-width:480px;margin:0 auto;">
-      <div class="modal-handle"></div>
-      <div class="syne" style="font-size:1rem;font-weight:800;margin-bottom:.25rem;">Soporte <span style="color:var(--purple);">NUIT</span></div>
-      <div style="font-size:.6rem;color:var(--text3);margin-bottom:1.25rem;">Estamos para ayudarte</div>
-      
-      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:1rem;margin-bottom:.75rem;">
-        <div style="font-size:.62rem;color:var(--text2);line-height:1.8;">
-          <div style="font-weight:600;color:var(--text);margin-bottom:.35rem;">¿Tenés algún problema?</div>
-          Escribinos a nuestro Instagram o envianos un mail. Respondemos en menos de 24hs.
-        </div>
-      </div>
-
-      <a href="https://instagram.com/nuit.app" target="_blank" style="display:flex;align-items:center;gap:.75rem;background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:.85rem;margin-bottom:.5rem;text-decoration:none;cursor:pointer;">
-        <div style="width:36px;height:36px;border-radius:10px;background:#e1306c20;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1.1rem;">📷</div>
-        <div><div style="font-size:.72rem;font-weight:600;color:var(--text);">Instagram</div><div style="font-size:.58rem;color:var(--text3);">@nuit.app</div></div>
-      </a>
-
-      <a href="mailto:soporte@nuit.app" style="display:flex;align-items:center;gap:.75rem;background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:.85rem;margin-bottom:1rem;text-decoration:none;cursor:pointer;">
-        <div style="width:36px;height:36px;border-radius:10px;background:#a855f720;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1.1rem;">✉️</div>
-        <div><div style="font-size:.72rem;font-weight:600;color:var(--text);">Email</div><div style="font-size:.58rem;color:var(--text3);">soporte@nuit.app</div></div>
-      </a>
-
-      <div style="text-align:center;font-size:.55rem;color:var(--text3);margin-bottom:1rem;">NUIT — The music is for everyone</div>
-      <button onclick="this.closest('[style]').remove()" class="btn btn-ghost" style="width:100%;">Cerrar</button>
-    </div>`;
-  document.body.appendChild(overlay);
-  overlay.addEventListener('click', e=>{ if(e.target===overlay) overlay.remove(); });
+  // Open in-app support chat directly
+  openSupportChat();
 }
 
 // ── SOPORTE CHAT ──────────────────────────────────────────────────────────────
@@ -2552,7 +2595,12 @@ const SUPPORT_WELCOME_MSG = '⭐ Hola! Bienvenido al soporte de NUIT. En breve a
 
 async function openSupportChat(){
   if(!currentUser){ openAuthModal(); toast('Ingresá para contactar soporte'); return; }
-  if(currentUser.id === SUPPORT_USER_ID){ toast('Esta es la cuenta de soporte'); return; }
+  if(currentUser.id === SUPPORT_USER_ID){ 
+    // Support account - show their conversations
+    showSection('chat');
+    setTimeout(()=>renderChatHome(), 100);
+    return; 
+  }
   
   // Get support profile
   const {data:supportProfile} = await sb.from('user_profiles').select('*').eq('user_id',SUPPORT_USER_ID).single();
@@ -2603,7 +2651,15 @@ async function adminDeleteEvent(eventId, btn){
 async function adminDeleteSet(setId, btn){
   btn.style.opacity='.5';
   btn.style.pointerEvents='none';
-  // Try deleting from profiles table (DJ profiles)
+  // Check if it's a valid UUID (DB record) or demo data
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if(!uuidRegex.test(setId)){
+    // Demo data - just remove from UI
+    const card = btn.closest('.card');
+    if(card) card.remove();
+    toast('Set demo removido');
+    return;
+  }
   const {error} = await sb.from('profiles').delete().eq('id',setId);
   if(error){
     toast('Error al borrar: '+error.message);
@@ -2613,6 +2669,94 @@ async function adminDeleteSet(setId, btn){
   }
   toast('DJ/Set borrado');
   setTimeout(()=>{ loadDBProfiles(); renderListen(); }, 300);
+}
+
+// ── ADMIN OPEN SUPPORT CHAT ───────────────────────────────────────────────────
+async function adminOpenSupportChat(userId){
+  if(!userId) return;
+  document.getElementById('adminOverlay')?.remove();
+  const {data:profile} = await sb.from('user_profiles').select('*').eq('user_id',userId).single();
+  if(!profile){ toast('Usuario no encontrado'); return; }
+  profile.user_id = userId;
+  // Open DM as if we are the support account viewing the convo
+  // We need to show the conversation between userId and SUPPORT_USER_ID
+  const roomId = [userId, 'cc288ad7-7cb9-4e87-95d9-9f58442223b5'].sort().join('_');
+  
+  // Show a special admin chat view
+  const overlay = document.createElement('div');
+  overlay.id = 'adminSupportChat';
+  overlay.style.cssText = 'position:fixed;inset:0;background:var(--bg);z-index:700;display:flex;flex-direction:column;max-width:480px;margin:0 auto;';
+  const name = ((profile.nombre||'')+(profile.apellido?' '+profile.apellido:'')).trim()||'Usuario';
+  overlay.innerHTML = `
+    <div style="padding:.75rem 1.25rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:.75rem;flex-shrink:0;">
+      <button onclick="document.getElementById('adminSupportChat').remove();showAdminPanel();" style="background:none;border:none;color:var(--text3);cursor:pointer;display:flex;padding:0;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <div style="flex:1;">
+        <div class="syne" style="font-size:.88rem;font-weight:700;">${name}</div>
+        <div style="font-size:.55rem;color:#34d399;">Chat de soporte</div>
+      </div>
+    </div>
+    <div id="adminSupportMsgs" style="flex:1;overflow-y:auto;padding:.85rem 1.25rem;display:flex;flex-direction:column;gap:.5rem;scrollbar-width:none;"></div>
+    <div style="padding:.65rem 1.25rem;border-top:1px solid var(--border);display:flex;gap:.5rem;flex-shrink:0;">
+      <input id="adminSupportInput" placeholder="Responder como soporte..." style="flex:1;border-radius:999px;padding:.5rem 1rem;font-size:.68rem;" onkeydown="if(event.key==='Enter')adminSendSupport('${roomId}','${userId}')">
+      <button onclick="adminSendSupport('${roomId}','${userId}')" style="width:36px;height:36px;border-radius:50%;background:#34d399;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>`;
+  document.body.appendChild(overlay);
+  
+  // Load messages
+  const {data:msgs} = await sb.from('messages').select('*').eq('room_id',roomId).order('created_at',{ascending:true}).limit(100);
+  const msgsEl = document.getElementById('adminSupportMsgs');
+  if(!msgs||msgs.length===0){
+    msgsEl.innerHTML='<div style="text-align:center;font-size:.6rem;color:var(--text3);padding:2rem;">Sin mensajes todavia</div>';
+  } else {
+    msgsEl.innerHTML = msgs.map(m=>{
+      const isSupport = m.user_id === 'cc288ad7-7cb9-4e87-95d9-9f58442223b5';
+      const time = new Date(m.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+      return `<div style="display:flex;flex-direction:column;align-items:${isSupport?'flex-end':'flex-start'};">
+        <div style="font-size:.52rem;color:var(--text3);margin-bottom:2px;">${isSupport?'Soporte':m.user_name||'Usuario'}</div>
+        <div style="max-width:78%;background:${isSupport?'#34d39930':'var(--bg3)'};border:1px solid ${isSupport?'#34d39950':'var(--border)'};border-radius:${isSupport?'14px 14px 4px 14px':'14px 14px 14px 4px'};padding:.55rem .85rem;font-size:.68rem;line-height:1.5;color:var(--text);">${m.content}</div>
+        <div style="font-size:.5rem;color:var(--text3);margin-top:2px;">${time}</div>
+      </div>`;
+    }).join('');
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+  }
+  
+  // Subscribe to new messages
+  sb.channel('admin-support:'+roomId)
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:`room_id=eq.${roomId}`},
+      (payload)=>{
+        const el=document.getElementById('adminSupportMsgs');
+        if(!el) return;
+        const m=payload.new;
+        const isSupport=m.user_id==='cc288ad7-7cb9-4e87-95d9-9f58442223b5';
+        const time=new Date(m.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+        const div=document.createElement('div');
+        div.style.cssText=`display:flex;flex-direction:column;align-items:${isSupport?'flex-end':'flex-start'};`;
+        div.innerHTML=`<div style="font-size:.52rem;color:var(--text3);margin-bottom:2px;">${isSupport?'Soporte':m.user_name||'Usuario'}</div><div style="max-width:78%;background:${isSupport?'#34d39930':'var(--bg3)'};border:1px solid ${isSupport?'#34d39950':'var(--border)'};border-radius:14px;padding:.55rem .85rem;font-size:.68rem;color:var(--text);">${m.content}</div><div style="font-size:.5rem;color:var(--text3);margin-top:2px;">${time}</div>`;
+        el.appendChild(div);
+        el.scrollTop=el.scrollHeight;
+      }
+    ).subscribe();
+}
+
+async function adminSendSupport(roomId, toUserId){
+  const input = document.getElementById('adminSupportInput');
+  if(!input||!currentUser) return;
+  const content = input.value.trim();
+  if(!content) return;
+  input.value='';
+  // Send as support account (using current admin session but with support user_id display)
+  const p = currentUser._profile||{};
+  await sb.from('messages').insert({
+    user_id: currentUser.id,
+    room_id: roomId,
+    content,
+    user_name: 'NUIT Soporte',
+    user_avatar: null
+  });
 }
 </script>
 </body>
