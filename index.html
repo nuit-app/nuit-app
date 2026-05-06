@@ -188,7 +188,7 @@ input[type=checkbox]{width:auto;padding:0;accent-color:var(--purple);}
 <div id="player" style="display:none;position:fixed;bottom:var(--nav-h);left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:#09090f;border-top:1px solid var(--border);padding:.6rem 1.25rem;z-index:39;align-items:center;gap:.85rem;box-shadow:0 -4px 20px #00000060;"></div>
 
 <!-- USER MENU -->
-<div id="userMenu" style="display:none;position:fixed;top:calc(var(--header-h) + .5rem);right:1rem;background:#0d0d1c;border:1px solid var(--border2);border-radius:14px;padding:.85rem;z-index:300;min-width:190px;box-shadow:0 8px 32px #00000060;">
+<div id="userMenu" style="display:none;position:fixed;top:4.5rem;right:1rem;background:#0d0d1c;border:1px solid var(--border2);border-radius:14px;padding:.85rem;z-index:300;min-width:190px;box-shadow:0 8px 32px #00000060;">
   <div id="userName" style="font-size:.72rem;color:var(--text);font-weight:600;margin-bottom:.2rem;"></div>
   <div id="userEmail" style="font-size:.58rem;color:var(--text3);margin-bottom:.65rem;border-bottom:1px solid var(--border);padding-bottom:.6rem;"></div>
   <div id="userRoleLabel" style="font-size:.58rem;color:var(--purple);margin-bottom:.65rem;text-transform:uppercase;letter-spacing:.07em;"></div>
@@ -468,16 +468,18 @@ const DJS_DEMO=[
   {id:'d5',name:'FRAK',genre:'UK Bass',city:'Buenos Aires',bio:'Bass music y breaks.',ig:'@frak_bass',color:'#f87171',bg:'#140505',price:13000,avail:true,rating:4.5,hires:28,
    sets:[{name:'South London Sessions',bpm:145,dur:3600,genre:'UK Bass',blob:null}]},
 ];
-let DJS = [...DJS_DEMO];
+let _deletedDemos = JSON.parse(localStorage.getItem('nuit_deleted_demos')||'[]');
+let DJS = DJS_DEMO.filter(d=>!_deletedDemos.includes(d.id));
 
-const EVENTS=[
+const EVENTS_ALL=[
   {id:'ev1',title:'UNDERGROUND RAVE',venue:'Club Niceto',city:'Buenos Aires',addr:'Niceto Vega 5510, Palermo, CABA',date:'2026-05-25',time:'23:00',lineup:['d1','d5'],price:5000,genre:'House / Bass'},
   {id:'ev2',title:'BUNKER NIGHT',venue:'La Maldita',city:'Buenos Aires',addr:'Av. Rivadavia 3000, CABA',date:'2026-05-30',time:'00:00',lineup:['d2'],price:6000,genre:'Techno'},
   {id:'ev3',title:'JUNGLE FEVER',venue:'La Trinchera',city:'Rosario',addr:'San Lorenzo 1234, Rosario',date:'2026-06-06',time:'22:00',lineup:['d3'],price:3000,genre:'Drum & Bass'},
   {id:'ev4',title:'MACHINE ROOM',venue:'El Teatro Club',city:'Buenos Aires',addr:'Constitucion 3456, CABA',date:'2026-06-14',time:'00:00',lineup:['d2'],price:8000,genre:'Techno Industrial'},
   {id:'ev5',title:'SOUND HEALING',venue:'Casa Cultural',city:'Cordoba',addr:'Bv. San Juan 500, Cordoba',date:'2026-06-20',time:'20:00',lineup:['d4'],price:2500,genre:'Ambient'},
   {id:'ev6',title:'MASSIVE NIGHT',venue:'Estadio Obras',city:'Buenos Aires',addr:'Av. del Libertador 7395, CABA',date:'2026-07-04',time:'20:00',lineup:['d1','d2','d5'],price:12000,genre:'Multi-Genero'},
-];
+]
+let EVENTS = EVENTS_ALL.filter(e=>!JSON.parse(localStorage.getItem('nuit_deleted_events')||'[]').includes(e.id));;
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 let state={tab:'listen',activeDJ:null,genreF:'Todos',cityF:'Todas',hireGenre:'Todos',hireCity:'Todas',hireMax:25000,hireAvail:false,nowPlaying:null,isPlaying:false,progress:0,curTime:0,dur:0,djTab:'sets'};
@@ -1159,8 +1161,6 @@ function renderProfile(){
       <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;">
         <div class="syne" style="font-size:1.05rem;font-weight:800;">${fullName}</div>
         ${isCEO?`<span style="background:#facc1520;border:1px solid #facc1540;border-radius:6px;padding:2px 7px;font-size:.48rem;color:#facc15;letter-spacing:.07em;text-transform:uppercase;">CEO</span>`:''}
-        ${p.verified?`<span style="background:var(--purple);border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></span>`:''}
-        ${currentUser.email===ADMIN_EMAIL?`<span style="background:#facc1520;border:1px solid #facc1540;border-radius:6px;padding:2px 7px;font-size:.48rem;color:#facc15;letter-spacing:.07em;text-transform:uppercase;">ADMIN</span>`:''}
         ${p.verified?`<span style="background:var(--purple);border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></span>`:''}
       </div>
       <div style="font-size:.6rem;color:${color};text-transform:uppercase;letter-spacing:.08em;margin-top:2px;">${roleLabels[p.role||'fan']||'Fan'}</div>
@@ -2645,6 +2645,9 @@ async function adminDeleteEvent(eventId, btn){
   // Check if valid UUID
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if(!uuidRegex.test(eventId)){
+    const deleted = JSON.parse(localStorage.getItem('nuit_deleted_events')||'[]');
+    if(!deleted.includes(eventId)) deleted.push(eventId);
+    localStorage.setItem('nuit_deleted_events', JSON.stringify(deleted));
     const card = btn.closest('.card');
     if(card) card.remove();
     toast('Evento demo removido');
@@ -2667,7 +2670,11 @@ async function adminDeleteSet(setId, btn){
   // Check if it's a valid UUID (DB record) or demo data
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if(!uuidRegex.test(setId)){
-    // Demo data - just remove from UI
+    // Demo data - save to localStorage so it persists after reload
+    const deleted = JSON.parse(localStorage.getItem('nuit_deleted_demos')||'[]');
+    if(!deleted.includes(setId)) deleted.push(setId);
+    localStorage.setItem('nuit_deleted_demos', JSON.stringify(deleted));
+    DJS = DJS.filter(d=>d.id!==setId);
     const card = btn.closest('.card');
     if(card) card.remove();
     toast('Set demo removido');
