@@ -1972,7 +1972,11 @@ async function openDM(profile){
 let dmAllMessages = [];
 function renderDMMessages(msgs, roomId, newMsg=null){
   if(msgs !== null) dmAllMessages = msgs;
-  if(newMsg) dmAllMessages.push(newMsg);
+  if(newMsg){
+    // Avoid duplicates
+    const exists = dmAllMessages.find(m=>m.id===newMsg.id);
+    if(!exists) dmAllMessages.push(newMsg);
+  }
   const el = document.getElementById('dmMessages');
   if(!el) return;
   if(dmAllMessages.length===0){
@@ -2440,7 +2444,7 @@ async function searchProfiles(query){
     const q = query.toLowerCase().replace('@','');
     const {data} = await sb.from('user_profiles')
       .select('user_id,nombre,apellido,username,role,avatar_url,verified,ciudad')
-      .or(`username.ilike.%${q}%,nombre.ilike.%${q}%,apellido.ilike.%${q}%`)
+      .or(`username.ilike.%${q}%,nombre.ilike.%${q}%,apellido.ilike.%${q}%,email.ilike.%${q}%`)
       .neq('user_id', currentUser?.id||'')
       .limit(8);
     if(!data||data.length===0){
@@ -2450,6 +2454,8 @@ async function searchProfiles(query){
     }
     const roleColors={dj:'#a855f7',fan:'#22d3ee',organizador:'#34d399',soporte:'#34d399',ceo:'#facc15'};
     resultsEl.innerHTML = data.map(p=>{
+      if(p.user_id==='cc288ad7-7cb9-4e87-95d9-9f58442223b5') p.role='soporte';
+      if(p.email==='pandonacho906@gmail.com') p.role='ceo';
       const name=((p.nombre||'')+(p.apellido?' '+p.apellido:'')).trim()||'Usuario';
       const color=roleColors[p.role||'fan']||'#a855f7';
       return `<div class="card card-click" onclick="openPublicProfile('${p.user_id}')" style="padding:.75rem;margin-bottom:.35rem;display:flex;align-items:center;gap:.75rem;">
@@ -2636,15 +2642,22 @@ async function openSupportChat(){
 async function adminDeleteEvent(eventId, btn){
   btn.style.opacity='.5';
   btn.style.pointerEvents='none';
+  // Check if valid UUID
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if(!uuidRegex.test(eventId)){
+    const card = btn.closest('.card');
+    if(card) card.remove();
+    toast('Evento demo removido');
+    return;
+  }
   const {error} = await sb.from('events').delete().eq('id',eventId);
   if(error){ 
-    toast('Error al borrar: '+error.message); 
+    toast('Error: '+error.message); 
     btn.style.opacity='1'; 
     btn.style.pointerEvents='auto';
     return; 
   }
   toast('Evento borrado');
-  // Reload events from DB
   setTimeout(()=>renderEvents(), 300);
 }
 
